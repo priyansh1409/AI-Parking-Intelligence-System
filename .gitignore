@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+.ipynb_checkpoints/
+
+*.pyc
+*.pyo
+
+.env
+
+models/*.pkl
+
+reports/*.html
+
+.DS_Store
+data/police violation_anonymized.csv
