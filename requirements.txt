@@ -1,10 +1,8 @@
+streamlit
 pandas
 numpy
-matplotlib
-seaborn
-folium
 scikit-learn
-streamlit
+joblib
 plotly
-jupyter
-xgboost
+folium
+streamlit-folium
