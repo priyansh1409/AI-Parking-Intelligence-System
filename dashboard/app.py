@@ -514,7 +514,7 @@ elif page == "Nearest Parking Finder":
         st.dataframe(
             nearest[
                 [
-                    "Parking Spot ",
+                    "police_station",
                     "impact_score",
                     "distance_km"
                 ]
