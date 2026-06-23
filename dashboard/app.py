@@ -5,6 +5,7 @@ from pathlib import Path
 import plotly.express as px
 import folium
 from streamlit_folium import st_folium
+from math import radians, sin, cos, sqrt, atan2
 
 # ==========================================
 # PAGE CONFIG
@@ -58,6 +59,22 @@ feature_importance = pd.DataFrame({
         0.002376
     ]
 })
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371  # Earth radius in km
+
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(radians(lat1))
+        * cos(radians(lat2))
+        * sin(dlon / 2) ** 2
+    )
+
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+
+    return R * c
 
 # ==========================================
 # HEADER
@@ -65,49 +82,7 @@ feature_importance = pd.DataFrame({
 
 st.title("🚗 AI Parking Intelligence System")
 
-st.markdown("""
-### Smart India Hackathon Solution
 
-AI-powered parking hotspot detection and congestion impact analysis.
-
-**Features**
-- Hotspot Detection using DBSCAN
-- Congestion Impact Scoring
-- Risk Prediction
-- Enforcement Recommendations
-""")
-
-# ==========================================
-# KPI CARDS
-# ==========================================
-
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.metric(
-        "Total Violations",
-        f"{len(df):,}"
-    )
-
-with col2:
-    st.metric(
-        "Hotspots",
-        df["cluster"].nunique() - 1
-    )
-
-with col3:
-    st.metric(
-        "Police Stations",
-        df["police_station"].nunique()
-    )
-
-with col4:
-    st.metric(
-        "Critical Cases",
-        len(df[df["risk_level"] == "Critical"])
-    )
-
-st.divider()
 
 # ==========================================
 # SIDEBAR
@@ -117,6 +92,7 @@ page = st.sidebar.radio(
     "Navigation",
     [
         "Overview",
+        "Nearest Parking Finder",
         "Hotspot Map",
         "Top Hotspots",
         "Feature Importance",
@@ -131,6 +107,49 @@ page = st.sidebar.radio(
 # ==========================================
 
 if page == "Overview":
+    st.markdown("""
+    
+
+    AI-powered parking hotspot detection and congestion impact analysis.
+
+    **Features**
+    - Hotspot Detection using DBSCAN
+    - Congestion Impact Scoring
+    - Risk Prediction
+    - Enforcement Recommendations
+    """)
+
+    # ==========================================
+    # KPI CARDS
+    # ==========================================
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric(
+            "Total Violations",
+            f"{len(df):,}"
+        )
+
+    with col2:
+        st.metric(
+            "Hotspots",
+            df["cluster"].nunique() - 1
+        )
+
+    with col3:
+        st.metric(
+            "Police Stations",
+            df["police_station"].nunique()
+        )
+
+    with col4:
+        st.metric(
+            "Critical Cases",
+            len(df[df["risk_level"] == "Critical"])
+        )
+
+    st.divider()
 
     st.header("📊 Project Overview")
 
@@ -420,4 +439,125 @@ Targeted Enforcement Recommendations
         st.metric(
             "High + Critical Risk",
             "7,338"
+        )
+
+
+# ==========================================
+# NEAREST PARKING FINDER
+# ==========================================
+
+elif page == "Nearest Parking Finder":
+
+    st.header("🅿️ Find Nearest Parking Hotspots")
+
+    # Initialize session state
+    if "nearest_spots" not in st.session_state:
+        st.session_state.nearest_spots = None
+
+    # Remove invalid coordinates
+    parking_data = hotspots.dropna(
+        subset=["latitude", "longitude"]
+    ).copy()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        user_lat = st.number_input(
+            "Your Latitude",
+            value=12.9716,
+            format="%.6f"
+        )
+
+    with col2:
+        user_lon = st.number_input(
+            "Your Longitude",
+            value=77.5946,
+            format="%.6f"
+        )
+
+    search_btn = st.button(
+        "Find Nearest Parking Spots",
+        type="primary"
+    )
+
+    if search_btn:
+
+        try:
+
+            parking_data["distance_km"] = parking_data.apply(
+                lambda row: haversine(
+                    float(user_lat),
+                    float(user_lon),
+                    float(row["latitude"]),
+                    float(row["longitude"])
+                ),
+                axis=1
+            )
+
+            st.session_state.nearest_spots = (
+                parking_data
+                .sort_values("distance_km")
+                .head(5)
+                .reset_index(drop=True)
+            )
+
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+    # Show results even after rerun
+    if st.session_state.nearest_spots is not None:
+
+        nearest = st.session_state.nearest_spots
+
+        st.subheader("📍 Top 5 Nearest Parking Hotspots")
+
+        st.dataframe(
+            nearest[
+                [
+                    "Parking Spot ",
+                    "impact_score",
+                    "distance_km"
+                ]
+            ],
+            use_container_width=True
+        )
+
+        # Create map
+        m = folium.Map(
+            location=[float(user_lat), float(user_lon)],
+            zoom_start=13
+        )
+
+        # User marker
+        folium.Marker(
+            [float(user_lat), float(user_lon)],
+            popup="Your Location",
+            tooltip="Your Location",
+            icon=folium.Icon(color="blue")
+        ).add_to(m)
+
+        # Parking markers
+        for _, row in nearest.iterrows():
+
+            popup_text = f"""
+            <b>{row['police_station']}</b><br>
+            Impact Score: {row['impact_score']:.2f}<br>
+            Distance: {row['distance_km']:.2f} km
+            """
+
+            folium.Marker(
+                [
+                    float(row["latitude"]),
+                    float(row["longitude"])
+                ],
+                popup=popup_text,
+                tooltip=row["police_station"],
+                icon=folium.Icon(color="green")
+            ).add_to(m)
+
+        st_folium(
+            m,
+            width=None,
+            height=600,
+            use_container_width=True
         )
